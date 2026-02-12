@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("IdempotencyGateway")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c3e53d94ec2454377a610c3860f9f366b0732c0b")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+ae5e52e8ba7c070dbd19abafc33cabe36ea093f4")]
 [assembly: System.Reflection.AssemblyProductAttribute("IdempotencyGateway")]
 [assembly: System.Reflection.AssemblyTitleAttribute("IdempotencyGateway")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
