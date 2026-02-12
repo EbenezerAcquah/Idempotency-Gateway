@@ -8,25 +8,27 @@ using IdempotencyGateway.Services;
 namespace IdempotencyGateway.Controllers
 {
     [ApiController]
-    [Route("process-payment")]      
-    
+    [Route("[controller]")] // this will make the route /Payment or use "process-payment"
     public class PaymentController(IdempotencyService service) : ControllerBase
     {
-        [HttpPost]
-        public async Task<IActionResult> ProcessPayment(
-            [FromBody] PaymentRequest request)
+        [HttpPost("/process-payment")] 
+        public async Task<IActionResult> ProcessPayment([FromBody] PaymentRequest request)
         {
+            //check idempotency key
             if (!Request.Headers.TryGetValue("Idempotency-Key", out var keyValues) || string.IsNullOrEmpty(keyValues))
                 return BadRequest("Missing Idempotency-Key");
 
             string key = keyValues.ToString();
-            string requestHash = Hash(JsonSerializer.Serialize(request));
+            
+            //key cannot be used with different request body
+            string requestHash = Hash(JsonSerializer.Serialize(request, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
 
             var store = service.Store;
 
+            
             if (store.TryGetValue(key, out var entry))
             {
-                if (service.IsExpired(entry))
+                if (service.IsExpired(entry))              // If stored entry expired, remove it
                 {
                     store.TryRemove(key, out _);
                 }
@@ -40,7 +42,7 @@ namespace IdempotencyGateway.Controllers
                         await entry.Waiter.Task;
                     }
 
-                    Response.Headers["X-Cache-Hit"] = "true";
+                    Response.Headers.Append("X-Cache-Hit", "true");
                     return Ok(entry.Response);
                 }
             }
@@ -50,26 +52,39 @@ namespace IdempotencyGateway.Controllers
                 RequestHash = requestHash,
                 IsProcessing = true,
                 CreatedAt = DateTime.UtcNow,
-                Waiter = new TaskCompletionSource<bool>()
+
+                // Allows duplicate requests to wait until processing completes
+                Waiter = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously)
             };
 
-            store[key] = newEntry;
-
-            await Task.Delay(2000);
-
-            var response = new PaymentResponse
+            if (!store.TryAdd(key, newEntry)) 
             {
-                Message = $"Charged {request.Amount} {request.Currency}",
-                ProcessedAt = DateTime.UtcNow
-            };
+                
+                return await ProcessPayment(request);
+            }
 
-            newEntry.Response = response;
-            newEntry.IsProcessing = false;
-            newEntry.Waiter?.SetResult(true);
+            try 
+            {
+                await Task.Delay(2000);        // simulate external API or DB processing
 
-            return Ok(response);
+                var response = new PaymentResponse
+                {
+                    Message = $"Charged {request.Amount} {request.Currency}",
+                    ProcessedAt = DateTime.UtcNow
+                };
+                
+                // Save result for reuse
+                newEntry.Response = response;
+                return Ok(response);
+            }
+            finally 
+            {
+                newEntry.IsProcessing = false;
+                newEntry.Waiter?.TrySetResult(true);
+            }
         }
 
+        // Converts input string to SHA256 hash
         private static string Hash(string input)
         {
             byte[] hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(input));
@@ -77,4 +92,3 @@ namespace IdempotencyGateway.Controllers
         }
     }
 }
-
